@@ -91,43 +91,47 @@
   </div>
 </div>
 
-<iframe id="mfApiBridge" title="Conexão segura com o Mercado Fácil" src="https://script.google.com/macros/s/AKfycbx-D6Vvk5iA-wKYBK0D48qcurmVLD4J4AzZQDdadUuizShy1Y310XjF-KVxST-oW-A-/exec?bridge=1" style="display:none;width:0;height:0;border:0" aria-hidden="true"></iframe>
+<!-- A API é chamada por JSONP; não há iframe de ponte nem postMessage. -->
 <script>
 let state={produtos:[],categorias:[],carrinho:[],usuario:null,scannerDestino:'venda',token:sessionStorage.getItem('mf_token')||''};
 const $=id=>document.getElementById(id);
 const money=v=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
 const qtd=v=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(Number(v)||0);
 function msg(text,error=false){$('msg').textContent=text||'';$('msg').className='notice'+(error?' error':'');if(text)window.scrollTo({top:0,behavior:'smooth'});}
-const MF_API_BRIDGE = (() => {
-  const frame = document.getElementById('mfApiBridge');
-  let ready = false;
-  let readyResolve;
-  const readyPromise = new Promise(resolve => { readyResolve = resolve; });
-  const pending = new Map();
-  let seq = 0;
-  frame.addEventListener('load', () => { try { frame.contentWindow.postMessage({type:'MF_PARENT_HELLO'}, '*'); } catch(e) {} });
-  window.addEventListener('message', event => {
-    if (event.source !== frame.contentWindow) return;
-    const data = event.data || {};
-    if (data.type === 'MF_BRIDGE_READY') { ready = true; readyResolve(); return; }
-    if (data.type !== 'MF_API_RESPONSE' || !pending.has(data.id)) return;
-    const item = pending.get(data.id); pending.delete(data.id);
-    if (data.ok) item.resolve(data.result);
-    else item.reject(new Error(data.error || 'Falha na comunicação com o servidor.'));
-  });
-  return async (token, action, args=[]) => {
-    if (!ready) {
-      await Promise.race([readyPromise, new Promise((_, reject) => setTimeout(() => reject(new Error('Não foi possível conectar ao Apps Script. Confira a implantação da API e atualize a página.')), 20000))]);
+const MF_API_URL = 'https://script.google.com/macros/s/AKfycbx-D6Vvk5iA-wKYBK0D48qcurmVLD4J4AzZQDdadUuizShy1Y310XjF-KVxST-oW-A-/exec';
+let mfJsonpSequence = 0;
+function rawApi(token, action, args=[]) {
+  return new Promise((resolve, reject) => {
+    const callbackName = '__mf_jsonp_' + Date.now() + '_' + (++mfJsonpSequence);
+    const script = document.createElement('script');
+    let finished = false;
+    const timeout = setTimeout(() => finish(new Error('O Apps Script demorou para responder. Tente novamente.')), 30000);
+    function finish(error, result) {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      script.onerror = null;
+      if (script.parentNode) script.parentNode.removeChild(script);
+      try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+      if (error) reject(error); else resolve(result);
     }
-    return new Promise((resolve, reject) => {
-      const id = 'mf-' + (++seq) + '-' + Date.now();
-      pending.set(id, {resolve, reject});
-      frame.contentWindow.postMessage({type:'MF_API_REQUEST', id, token, action, args}, '*');
-      setTimeout(() => { if (pending.has(id)) { pending.delete(id); reject(new Error('O servidor demorou para responder. Tente novamente.')); } }, 30000);
-    });
-  };
-})();
-function rawApi(token,action,args=[]){return MF_API_BRIDGE(token,action,args);}
+    window[callbackName] = function(payload) {
+      if (payload && payload.__mfError) finish(new Error(payload.error || 'Falha no Apps Script.'));
+      else finish(null, payload);
+    };
+    script.async = true;
+    script.onerror = () => finish(new Error('Não foi possível carregar a API do Apps Script. Verifique a implantação e a conexão.'));
+    const params = new URLSearchParams();
+    params.set('api', '1');
+    params.set('callback', callbackName);
+    params.set('token', token || '');
+    params.set('action', String(action || ''));
+    params.set('args', JSON.stringify(Array.isArray(args) ? args : []));
+    params.set('_', String(Date.now()));
+    script.src = MF_API_URL + '?' + params.toString();
+    document.head.appendChild(script);
+  });
+}
 function call(fn,...args){return rawApi(state.token,fn,args).then(r=>{if(r&&r.error)throw new Error(r.error);return r;});}
 function authMessage(t,error=false){$('authMsg').textContent=t||'';$('authMsg').className='notice'+(error?' error':'');}
 async function prepararAutenticacao(){try{const r=await rawApi('', 'estadoAutenticacao');if(r.precisaCriarAdmin){$('loginForm').classList.add('hidden');$('setupForm').classList.remove('hidden');}else{$('loginForm').classList.remove('hidden');$('setupForm').classList.add('hidden');}if(state.token){try{const d=await call('obterDadosIniciais');$('authScreen').style.display='none';$('mainApp').style.display='block';aplicarDadosIniciais(d);return;}catch(e){state.token='';sessionStorage.removeItem('mf_token');}}$('authScreen').style.display='flex';$('mainApp').style.display='none';}catch(e){authMessage(e.message,true);}}
