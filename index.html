@@ -2,6 +2,15 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#147a50">
+<meta name="description" content="Mercado Fácil — sistema de estoque e vendas.">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+
 <title>Mercado Fácil</title>
 <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -391,4 +400,12 @@ $('pUnidade').addEventListener('change',atualizarAjudaFormas);
 $('scannerModal').addEventListener('click',e=>{if(e.target===$('scannerModal'))fecharScanner();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape' && $('scannerModal').classList.contains('open'))fecharScanner();});
 (function(){const now=new Date(),first=new Date(now.getFullYear(),now.getMonth(),1);$('rInicio').value=first.toISOString().slice(0,10);$('rFim').value=now.toISOString().slice(0,10);limparFormProduto();prepararAutenticacao();})();
+</script>
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js')
+      .catch(error => console.warn('Não foi possível preparar o modo instalado:', error));
+  });
+}
 </script></body></html>
