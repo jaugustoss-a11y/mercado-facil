@@ -134,34 +134,57 @@ function rawApi(token, action, args=[]) {
 }
 function call(fn,...args){return rawApi(state.token,fn,args).then(r=>{if(r&&r.error)throw new Error(r.error);return r;});}
 function authMessage(t,error=false){$('authMsg').textContent=t||'';$('authMsg').className='notice'+(error?' error':'');}
-async function prepararAutenticacao(){try{const r=await rawApi('', 'estadoAutenticacao');if(r.precisaCriarAdmin){$('loginForm').classList.add('hidden');$('setupForm').classList.remove('hidden');}else{$('loginForm').classList.remove('hidden');$('setupForm').classList.add('hidden');}if(state.token){try{const d=await call('obterDadosIniciais');$('authScreen').style.display='none';$('mainApp').style.display='block';aplicarDadosIniciais(d);return;}catch(e){state.token='';sessionStorage.removeItem('mf_token');}}$('authScreen').style.display='flex';$('mainApp').style.display='none';}catch(e){authMessage(e.message,true);}}
+async function prepararAutenticacao(){
+  // Se já houver sessão salva, tenta validá-la diretamente, sem consultar antes o estado do cadastro.
+  if(state.token){
+    try{
+      const d=await call('obterDadosIniciais');
+      if(!d || !Array.isArray(d.produtos) || !Array.isArray(d.categorias) || !d.resumo || !d.usuario) throw new Error('Dados iniciais incompletos.');
+      $('loginForm').classList.remove('hidden');
+      $('setupForm').classList.add('hidden');
+      aplicarDadosIniciais(d);
+      $('authScreen').style.display='none';
+      $('mainApp').style.display='block';
+      return;
+    }catch(e){
+      state.token='';
+      state.usuario=null;
+      sessionStorage.removeItem('mf_token');
+    }
+  }
+  try{
+    const r=await rawApi('', 'estadoAutenticacao');
+    if(r.precisaCriarAdmin){$('loginForm').classList.add('hidden');$('setupForm').classList.remove('hidden');}
+    else{$('loginForm').classList.remove('hidden');$('setupForm').classList.add('hidden');}
+    $('authScreen').style.display='flex';
+    $('mainApp').style.display='none';
+  }catch(e){authMessage(e.message,true);}
+}
 async function entrar(e){
   e.preventDefault();
   const botao=$('loginForm').querySelector('button[type="submit"]');
   botao.disabled=true;
   botao.textContent='Entrando…';
-  authMessage('Verificando acesso…');
+  authMessage('Verificando acesso e carregando os dados…');
   $('authScreen').style.display='flex';
   $('mainApp').style.display='none';
 
   try{
-    const r=await rawApi('', 'autenticar',[{
+    // Autenticação e dados iniciais chegam juntos em uma única chamada ao Apps Script.
+    const r=await rawApi('', 'autenticarEObterDadosIniciais',[{
       email:$('loginEmail').value.trim(),
       senha:$('loginSenha').value
     }]);
 
-    if(!r || !r.token) throw new Error('O servidor não confirmou o acesso. Tente novamente.');
+    if(!r || !r.token || !r.dados) throw new Error('O servidor não confirmou o acesso ou não retornou os dados iniciais. Tente novamente.');
+    const d=r.dados;
+    if(!Array.isArray(d.produtos) || !Array.isArray(d.categorias) || !d.resumo || !d.usuario){
+      throw new Error('O acesso foi validado, mas os dados iniciais vieram incompletos. Atualize a página e tente novamente.');
+    }
 
     state.token=r.token;
     state.usuario=r.usuario;
     sessionStorage.setItem('mf_token',r.token);
-
-    // Carrega e valida os dados antes de retirar a tela de login.
-    const d=await call('obterDadosIniciais');
-    if(!d || !Array.isArray(d.produtos) || !Array.isArray(d.categorias) || !d.resumo || !d.usuario){
-      throw new Error('O acesso foi validado, mas os dados iniciais vieram incompletos. Atualize a página e tente novamente.');
-    }
-
     aplicarDadosIniciais(d);
     $('loginSenha').value='';
     $('authScreen').style.display='none';
@@ -179,6 +202,7 @@ async function entrar(e){
     botao.textContent='Entrar no sistema';
   }
 }
+
 async function criarAdmin(e){e.preventDefault();authMessage('Criando administrador…');try{const r=await rawApi('', 'criarAdministradorInicial',[{chave:$('setupKey').value,nome:$('setupNome').value,email:$('setupEmail').value,senha:$('setupSenha').value}]);authMessage(r.mensagem);$('setupForm').reset();$('setupForm').classList.add('hidden');$('loginForm').classList.remove('hidden');}catch(err){authMessage(err.message,true);}}
 async function sairSistema(){try{await rawApi(state.token,'encerrarSessao',[]);}catch(e){}state.token='';state.usuario=null;sessionStorage.removeItem('mf_token');$('mainApp').style.display='none';$('authScreen').style.display='flex';$('loginForm').reset();prepararAutenticacao();}
 function ir(view){document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+view));if(view==='relatorios')carregarRelatorio();if(view==='historico')carregarHistorico();if(view==='usuarios')carregarUsuarios();}
