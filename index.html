@@ -282,6 +282,8 @@ async function abrirScanner(destino) {
 
 async function iniciarCameraScanner() {
   pararLeituraScanner();
+  // A limpeza da câmera anterior desativa o leitor; reativamos antes de iniciar a nova leitura.
+  scannerAtivo = true;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new Error('Este navegador não oferece acesso à câmera nesta página.');
   }
